@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Вторая сборка того же приложения: тот же исходный код, но с константой
+    SRT_BUILD. Получается PortableStreamerSRT.exe с интерфейсом только под SRT.
+    Отдельный код не дублируется — правки делаются один раз.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TopLevelStatements>disable</TopLevelStatements>
+    <InvariantGlobalization>false</InvariantGlobalization>
+
+    <AssemblyName>PortableStreamerSRT</AssemblyName>
+    <RootNamespace>PortableStreamer</RootNamespace>
+    <ApplicationIcon>..\app.ico</ApplicationIcon>
+
+    <!-- Сборка должна быть самодостаточной, как и основная: .NET на целевой
+         машине может не быть вообще. -->
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <DefineConstants>$(DefineConstants);SRT_BUILD</DefineConstants>
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Form1.cs" />
+    <Compile Include="..\Program.cs" />
+    <Compile Include="..\JpegFramer.cs" />
+
+    <EmbeddedResource Include="..\app.ico" LogicalName="PortableStreamer.app.ico" />
+    <EmbeddedResource Include="..\intro01.png" LogicalName="PortableStreamer.intro01.png" />
+    <EmbeddedResource Include="..\outro01.png" LogicalName="PortableStreamer.outro01.png" />
+  </ItemGroup>
+
+</Project>

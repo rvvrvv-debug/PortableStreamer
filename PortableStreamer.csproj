@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<UseWindowsForms>true</UseWindowsForms>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+
+		<!-- Настройки для нашего проекта -->
+		<PublishAot>true</PublishAot>
+		<TopLevelStatements>disable</TopLevelStatements>
+		<InvariantGlobalization>false</InvariantGlobalization>
+
+		<!-- Подавляем предупреждение о совместимости WinForms и AOT -->
+		<_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
+
+		<!-- Иконка исполняемого файла -->
+		<ApplicationIcon>app.ico</ApplicationIcon>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Update="README.txt">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove="app.ico" />
+	  <None Remove="intro01.png" />
+	  <None Remove="outro01.png" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <EmbeddedResource Include="app.ico" />
+	  <EmbeddedResource Include="intro01.png" />
+	  <EmbeddedResource Include="outro01.png" />
+	</ItemGroup>
+
+	<!-- Папка второй сборки (SRT) не должна попадать в этот проект:
+	     иначе её сгенерированные файлы компилируются дважды. -->
+	<ItemGroup>
+		<Compile Remove="SrtBuild\**" />
+		<EmbeddedResource Remove="SrtBuild\**" />
+		<None Remove="SrtBuild\**" />
+	</ItemGroup>
+
+	<!-- tools лежат рядом с exe и копируются в релиз отдельно.
+	     В публикацию их включать нельзя: иначе они раздувают exe при single-file. -->
+	<ItemGroup>
+		<None Update="tools\**\*.*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>Never</CopyToPublishDirectory>
+		</None>
+	</ItemGroup>
+
+</Project>
