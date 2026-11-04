@@ -1021,7 +1021,17 @@ namespace PortableStreamer
             txtBitrate.Text = profile.GetValueOrDefault("VideoKbps", "4200");
             txtAudioBitrate.Text = profile.GetValueOrDefault("AudioKbps", "192");
             txtSampleRate.Text = profile.GetValueOrDefault("SampleRate", "48000");
-            txtRtmpUrl.Text = profile.GetValueOrDefault("RtmpUrl", "rtmp://");
+            // В SRT-сборке адрес должен быть srt://, и наоборот: профиль общий,
+            // и без этой проверки SRT-версия показывала бы rtmp:// из настроек
+            // обычной версии (и наоборот).
+            string savedUrl = profile.GetValueOrDefault("RtmpUrl", SrtBuild ? "srt://" : "rtmp://");
+
+            if (SrtBuild && !savedUrl.StartsWith("srt://", StringComparison.OrdinalIgnoreCase))
+                savedUrl = "srt://";
+            else if (!SrtBuild && savedUrl.StartsWith("srt://", StringComparison.OrdinalIgnoreCase))
+                savedUrl = "rtmp://";
+
+            txtRtmpUrl.Text = savedUrl;
             txtStreamKey.Text = profile.GetValueOrDefault("StreamKey", "");
             _loopAudioPath = profile.GetValueOrDefault("LoopAudio", "");
             UpdateLoopSourceCaption();
@@ -1640,10 +1650,16 @@ namespace PortableStreamer
 
             // SRT-сборке нужен приёмник SRT внутри MediaMTX: локально мы по-прежнему
             // публикуем по RTMP, а наружу уходим по SRT.
+            //
+            // ВАЖНО: адрес именно ":8890", а не "127.0.0.1:8890". На loopback
+            // MediaMTX привязывает SRT-сокет к 127.0.0.1 и использует его же для
+            // ИСХОДЯЩИХ подключений — пакеты уходят в петлю, приёмник их не видит,
+            // и в логе появляется "connection timeout. server didn't respond".
+            // Проверено: с 127.0.0.1 — таймаут, с :8890 — соединение проходит.
             if (SrtBuild)
             {
                 sb.AppendLine("srt: yes");
-                sb.AppendLine("srtAddress: 127.0.0.1:8890");
+                sb.AppendLine("srtAddress: :8890");
             }
             else
             {
@@ -1712,15 +1728,22 @@ namespace PortableStreamer
 
             try
             {
-                // Картинки больше не кодируются заранее. Они собираются прямо в эфирном
+                // Картинки не кодируются заранее: они собираются прямо в эфирном
                 // потоке (imagefreeze), поэтому подготовка занимает доли секунды,
                 // а длительность заставки задаётся точно, без кратности 5 секундам.
-                string introImagePath = chkUseIntro.Checked && File.Exists(txtIntroJpg.Text)
-                    ? txtIntroJpg.Text : ExtractEmbeddedImage("intro01.png");
+                //
+                // В тестовом цикле заставок нет: это чистый тестовый поток,
+                // и добавление intro/outro искажало длительность (таймер
+                // останавливал эфир раньше, чем доигрывал финал).
+                if (!IsLoopMode)
+                {
+                    string introImagePath = chkUseIntro.Checked && File.Exists(txtIntroJpg.Text)
+                        ? txtIntroJpg.Text : ExtractEmbeddedImage("intro01.png");
 
-                int introSeconds = (int)numIntroDuration.Value;
-                _playlist.Add(new PlaylistSegment(SegmentKind.Image, introImagePath, introSeconds));
-                _totalDurationSeconds += introSeconds;
+                    int introSeconds = (int)numIntroDuration.Value;
+                    _playlist.Add(new PlaylistSegment(SegmentKind.Image, introImagePath, introSeconds));
+                    _totalDurationSeconds += introSeconds;
+                }
 
                 if (IsLoopMode)
                 {
@@ -1748,12 +1771,16 @@ namespace PortableStreamer
                         SetStatus("В файле нет звуковой дорожки — будет добавлена тишина", StatusKind.Waiting);
                 }
 
-                string outroImagePath = chkUseOutro.Checked && File.Exists(txtOutroJpg.Text)
-                    ? txtOutroJpg.Text : ExtractEmbeddedImage("outro01.png");
+                // Финальная заставка — тоже только в обычном режиме.
+                if (!IsLoopMode)
+                {
+                    string outroImagePath = chkUseOutro.Checked && File.Exists(txtOutroJpg.Text)
+                        ? txtOutroJpg.Text : ExtractEmbeddedImage("outro01.png");
 
-                int outroSeconds = 60;
-                _playlist.Add(new PlaylistSegment(SegmentKind.Image, outroImagePath, outroSeconds));
-                _totalDurationSeconds += outroSeconds;
+                    int outroSeconds = 60;
+                    _playlist.Add(new PlaylistSegment(SegmentKind.Image, outroImagePath, outroSeconds));
+                    _totalDurationSeconds += outroSeconds;
+                }
 
                 // Проверяем энкодер ДО эфира: если аппаратный не работает,
                 // успеваем переключиться на CPU без опоздания к времени старта.
@@ -1908,9 +1935,12 @@ namespace PortableStreamer
                 _streamStartTime = DateTime.Now;
 
                 // В тестовом цикле фиксируем момент плановой остановки.
+                // Небольшой запас сверх длительности: заставок в цикле больше нет,
+                // и плейлист заканчивается ровно на этом времени — пусть лучше
+                // сработает штатный конец потока (код 0), а таймер будет страховкой.
                 _stopBySchedule = false;
                 _scheduledStopAt = (IsLoopMode && numDuration.Value > 0)
-                    ? _streamStartTime.AddMinutes((double)numDuration.Value)
+                    ? _streamStartTime.AddMinutes((double)numDuration.Value).AddSeconds(15)
                     : null;
 
                 var s = GetEncodingSettings();
@@ -1930,9 +1960,16 @@ namespace PortableStreamer
                 //    конвейер отдаёт кадры с максимальной скоростью: 5-минутный плейлист
                 //    «пролетает» за 20 секунд, MediaMTX не успевает принять поток
                 //    ("reader is too slow"), отправка на CDN рвётся, превью летит в ускорении.
-                //  - неограниченные очереди перед mux у видео и аудио: flvmux сам выравнивает PTS
-                //    по минимальной временной метке, устраняя рассинхрон A/V на границах concat
+                //  - очереди перед mux ограничены 2 секундами (было: без ограничений).
+                //    С неограниченными очередями кодировщик «убегал» вперёд на минуты:
+                //    поток всё равно шёл в реальном времени (его придерживает rtmpsink),
+                //    но наложенные часы рисовали время КОДИРОВАНИЯ, а не отправки —
+                //    и на экране отставали тем сильнее, чем дольше эфир.
+                //    Ограничение создаёт обратное давление: кодировщик идёт вровень
+                //    с отправкой, и часы в кадре соответствуют реальному времени.
                 // ============================================================================
+                const string MuxQueue = "max-size-buffers=0 max-size-bytes=0 max-size-time=2000000000";
+
                 string args = $"-e " +
                     $"flvmux streamable=true name=mux ! rtmpsink location=\"{InternalStreamUrl}\" " +
                     // videoconvert между склейкой и энкодером обязателен: без него concat
@@ -1940,9 +1977,9 @@ namespace PortableStreamer
                     // форматом к нему не подключаются ("could not link queue to vconcat").
                     // Именно это ломало запуск на Intel QuickSync.
                     $"concat name=vconcat ! videoconvert {clockPart}! queue ! {enc} ! h264parse config-interval=-1 " +
-                    $"! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! mux. " +
+                    $"! queue {MuxQueue} ! mux. " +
                     $"concat name=aconcat ! audiorate ! queue ! avenc_aac bitrate={abps} perfect-timestamp=true ! aacparse " +
-                    $"! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! mux. ";
+                    $"! queue {MuxQueue} ! mux. ";
 
                 // Превью больше НЕ живёт в этом пайплайне. Оно запускается отдельным
                 // процессом и читает готовый поток из MediaMTX по RTSP, поэтому
@@ -2259,10 +2296,14 @@ namespace PortableStreamer
                 try
                 {
                     var runTime = DateTime.Now - _streamStartTime;
+                    string ending = _stopBySchedule
+                        ? "остановлен по расписанию"
+                        : $"код: {exitCode}";
+
                     AppendLog(Path.Combine(PrepCacheDir, "stream_log.txt"),
                         $"=== Эфир завершён: {DateTime.Now:dd.MM.yyyy HH:mm:ss} | " +
                         $"длительность: {(int)runTime.TotalHours:00}:{runTime.Minutes:00}:{runTime.Seconds:00} | " +
-                        $"код: {exitCode} ===");
+                        $"{ending} ===");
                 }
                 catch { }
 
@@ -2415,6 +2456,10 @@ namespace PortableStreamer
                     "! videoconvert ! videoscale ! videorate " +
                     "! video/x-raw,width=160,height=90,framerate=5/1 " +
                     "! jpegenc quality=40 " +
+                    // leaky: если клиент не успевает читать, старые кадры выбрасываются,
+                    // и в окне всегда свежая картинка (иначе превью отстаёт всё сильнее
+                    // и часы на экране показывают время «из прошлого»).
+                    "! queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 " +
                     $"! tcpserversink host=127.0.0.1 port={_previewPort} sync=false async=false " +
                     "d.audio ! queue ! fakesink sync=false async=false";
 
@@ -2990,14 +3035,34 @@ namespace PortableStreamer
 
             btnStart.Text = loop ? "ЗАПУСТИТЬ ТЕСТ" : "ПУСК";
 
+            // В тестовом цикле заставки не используются — гасим их,
+            // чтобы не было сомнений: тест идёт от начала до конца.
+            chkUseIntro.Enabled = !loop;
+            chkUseOutro.Enabled = !loop;
+
             if (loop)
             {
+                txtIntroJpg.Enabled = false;
+                btnBrowseIntro.Enabled = false;
+                numIntroDuration.Enabled = false;
+                txtOutroJpg.Enabled = false;
+                btnBrowseOutro.Enabled = false;
+
+                _tip.SetToolTip(chkUseIntro, "В тестовом цикле заставки не используются");
+                _tip.SetToolTip(chkUseOutro, "В тестовом цикле заставки не используются");
+
                 chkUseMainVideo.Text = "Источник:";
                 UpdateLoopSourceTooltip();
                 SetStatus("Готов (тестовый цикл)", StatusKind.Idle);
             }
             else
             {
+                _tip.SetToolTip(chkUseIntro, "Показывать заставку перед основным видео");
+                _tip.SetToolTip(chkUseOutro, "Показывать финальную заставку");
+
+                chkUseIntro_CheckedChanged(null, EventArgs.Empty);
+                chkUseOutro_CheckedChanged(null, EventArgs.Empty);
+
                 chkUseMainVideo.Text = "Main Video:";
                 SetStatus("Готов", StatusKind.Idle);
             }
@@ -3363,7 +3428,11 @@ namespace PortableStreamer
             txtIntroJpg.Enabled = on;
             btnBrowseIntro.Enabled = on;
             numIntroDuration.Enabled = on;
-            if (!on) ShowIntroWarning();
+
+            // Предупреждение — только когда галочку снял пользователь.
+            // Программные вызовы (загрузка настроек, смена режима) приходят
+            // с sender = null, и окно на старте появляться не должно.
+            if (!on && sender != null) ShowIntroWarning();
         }
 
         private void chkUseOutro_CheckedChanged(object? sender, EventArgs e)
