@@ -175,6 +175,31 @@ namespace PortableStreamer
         private string LogPath(string baseName)
             => Path.Combine(PrepCacheDir, SrtBuild ? $"{baseName}_srt.txt" : $"{baseName}.txt");
 
+        /// <summary>
+        /// Поток опубликован в MediaMTX (появилась строка "is publishing to path").
+        /// </summary>
+        private volatile bool _streamPublished;
+
+        /// <summary>
+        /// Дописывает итоговую строку, если эфир был остановлен не сам,
+        /// а оператором или закрытием программы. Иначе такой прогон остаётся
+        /// в истории без конца, и непонятно, чем он закончился.
+        /// </summary>
+        private void WriteStreamSummary(string reason)
+        {
+            try
+            {
+                if (!IsStreamRunning()) return;
+
+                var runTime = DateTime.Now - _streamStartTime;
+                AppendLog(LogPath("stream_log"),
+                    $"=== Эфир завершён: {DateTime.Now:dd.MM.yyyy HH:mm:ss} | " +
+                    $"длительность: {(int)runTime.TotalHours:00}:{runTime.Minutes:00}:{runTime.Seconds:00} | " +
+                    $"{reason} ===");
+            }
+            catch { }
+        }
+
         private string ConfigFilePath
         {
             get
@@ -2412,10 +2437,20 @@ namespace PortableStreamer
         /// </summary>
         private async Task StartPreviewAsync()
         {
-            for (int attempt = 0; attempt < 4; attempt++)
+            // Ждём не «на глаз», а фактической публикации потока в MediaMTX
+            // (строка "is publishing to path"). Фиксированная пауза иногда
+            // оказывалась короче, и превью стартовало раньше потока —
+            // в логе оставалась ошибка на 0:00:00.
+            for (int i = 0; i < 75 && !_streamPublished; i++)
             {
-                await Task.Delay(attempt == 0 ? 2500 : 2000);
+                if (_streamProcess == null || _streamProcess.HasExited)
+                    return;
 
+                await Task.Delay(200);
+            }
+
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
                 if (_streamProcess == null || _streamProcess.HasExited)
                     return;
 
@@ -2771,6 +2806,12 @@ namespace PortableStreamer
         {
             try
             {
+                // Признак того, что поток реально опубликован в MediaMTX.
+                // По нему превью понимает, что уже можно подключаться,
+                // вместо фиксированной паузы «на глаз».
+                if (line.Contains("is publishing to path", StringComparison.OrdinalIgnoreCase))
+                    _streamPublished = true;
+
                 if (line.Contains("forwarding to", StringComparison.OrdinalIgnoreCase))
                 {
                     int epoch = ++_cdnEpoch;
@@ -2852,6 +2893,10 @@ namespace PortableStreamer
         {
             _cdnEpoch = 0;
             _cdnErrorEpoch = -1;
+
+            // Новый прогон — поток ещё не опубликован.
+            _streamPublished = false;
+
             UpdateCdnStatus(_hasCdn ? "CDN: ожидание" : "CDN: не настроен",
                 Color.Gainsboro, Color.DimGray);
         }
@@ -3390,6 +3435,10 @@ namespace PortableStreamer
         {
             try { _prepCts?.Cancel(); } catch { }
 
+            // Сначала фиксируем итог в лог: процесс сейчас будет убит,
+            // и штатный обработчик завершения уже не сработает.
+            WriteStreamSummary("остановлен оператором");
+
             schedulerTimer.Stop();
             progressUpdateTimer.Stop();
             StopMediaMtx();
@@ -3408,6 +3457,10 @@ namespace PortableStreamer
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
             try { _prepCts?.Cancel(); } catch { }
+
+            // Закрытие окна во время эфира — тоже надо отметить в истории.
+            WriteStreamSummary("программа закрыта");
+
             try { schedulerTimer?.Stop(); } catch { }
             try { progressUpdateTimer?.Stop(); } catch { }
             try { StopMediaMtx(); } catch { }
