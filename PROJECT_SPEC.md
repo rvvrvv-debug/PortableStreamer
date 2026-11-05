@@ -1,4 +1,4 @@
-# PROJECT_SPEC.md — PortableStreamer v2.02
+# PROJECT_SPEC.md — PortableStreamer v2.03
 
 Плановый стример (playout server) на C# WinForms + GStreamer + MediaMTX.
 

@@ -428,8 +428,8 @@ namespace PortableStreamer
             SuspendLayout();
 
             Text = SrtBuild
-                ? "GstScheduler — Playout Server v.2.02 (SRT)"
-                : "GstScheduler — Playout Server v.2.02";
+                ? "GstScheduler — Playout Server v.2.03 (release, SRT)"
+                : "GstScheduler — Playout Server v.2.03 (release)";
             ClientSize = new Size(950, 590);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
@@ -879,7 +879,7 @@ namespace PortableStreamer
             Controls.Add(gbAbout);
 
             int by = 22;
-            gbAbout.Controls.Add(new Label { Text = "Автор: Виктор Решедько (RVic)", Location = new Point(10, by), Size = new Size(170, 18) }); by += 20;
+            gbAbout.Controls.Add(new Label { Text = "Автор: Виктор (RVic)", Location = new Point(10, by), Size = new Size(170, 18) }); by += 20;
             gbAbout.Controls.Add(new Label { Text = "При участии: Claude (Anthropic)", Location = new Point(10, by), Size = new Size(170, 18) }); by += 20;
             gbAbout.Controls.Add(new Label { Text = "Лицензия: GPL v3", Location = new Point(10, by), Size = new Size(170, 18) }); by += 26;
 
@@ -890,6 +890,10 @@ namespace PortableStreamer
             var lnkGpl = new LinkLabel { Text = "gnu.org/licenses/gpl-3.0", Location = new Point(10, by), Size = new Size(170, 18) };
             lnkGpl.LinkClicked += (_, _) => OpenUrl("https://www.gnu.org/licenses/gpl-3.0.html");
             gbAbout.Controls.Add(lnkGpl); by += 20;
+
+            var lnkGit = new LinkLabel { Text = "github.com/rvvrvv-debug", Location = new Point(10, by), Size = new Size(170, 18) };
+            lnkGit.LinkClicked += (_, _) => OpenUrl("https://github.com/rvvrvv-debug/PortableStreamer");
+            gbAbout.Controls.Add(lnkGit); by += 20;
 
             var lnkAi = new LinkLabel { Text = "anthropic.com/claude", Location = new Point(10, by), Size = new Size(170, 18) };
             lnkAi.LinkClicked += (_, _) => OpenUrl("https://www.anthropic.com/claude");
