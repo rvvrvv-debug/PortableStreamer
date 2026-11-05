@@ -166,6 +166,15 @@ namespace PortableStreamer
             }
         }
 
+        /// <summary>
+        /// Путь к активному файлу лога. Вид сборки входит в ИМЯ ФАЙЛА, а не в имя
+        /// архива: иначе при сборе логов с нескольких машин архивы получали метку
+        /// того прогона, который их архивировал, и содержимое путалось с названием
+        /// (в «srt»-файле мог лежать лог обычной версии).
+        /// </summary>
+        private string LogPath(string baseName)
+            => Path.Combine(PrepCacheDir, SrtBuild ? $"{baseName}_srt.txt" : $"{baseName}.txt");
+
         private string ConfigFilePath
         {
             get
@@ -340,7 +349,7 @@ namespace PortableStreamer
 
             try
             {
-                AppendLog(Path.Combine(PrepCacheDir, "stream_log.txt"),
+                AppendLog(LogPath("stream_log"),
                     $">>> Энкодер {preferred} не запустился — переключение на x264enc (CPU)");
             }
             catch { }
@@ -2300,7 +2309,7 @@ namespace PortableStreamer
                         ? "остановлен по расписанию"
                         : $"код: {exitCode}";
 
-                    AppendLog(Path.Combine(PrepCacheDir, "stream_log.txt"),
+                    AppendLog(LogPath("stream_log"),
                         $"=== Эфир завершён: {DateTime.Now:dd.MM.yyyy HH:mm:ss} | " +
                         $"длительность: {(int)runTime.TotalHours:00}:{runTime.Minutes:00}:{runTime.Seconds:00} | " +
                         $"{ending} ===");
@@ -2311,7 +2320,7 @@ namespace PortableStreamer
                 int decoders;
                 lock (_decodersSeen) { decoders = _decodersSeen.Count; }
                 if (decoders == 0)
-                    AppendLog(Path.Combine(PrepCacheDir, "stream_log.txt"),
+                    AppendLog(LogPath("stream_log"),
                         ">>> ДЕКОДЕР: программный (аппаратный не использовался)");
 
                 return;
@@ -2441,7 +2450,7 @@ namespace PortableStreamer
                 _previewCts = new CancellationTokenSource();
                 var token = _previewCts.Token;
 
-                string logPath = Path.Combine(PrepCacheDir, "preview_log.txt");
+                string logPath = LogPath("preview_log");
                 logPath = PrepareLogFile(logPath);
 
                 // Превью читает поток по RTMP и ЯВНО подключает обе дорожки.
@@ -2657,7 +2666,7 @@ namespace PortableStreamer
                     "Чаще всего это второй экземпляр программы или ранее запущенный MediaMTX.\n" +
                     "Закройте их и повторите запуск.");
 
-            string logPath = Path.Combine(PrepCacheDir, "mediamtx_log.txt");
+            string logPath = LogPath("mediamtx_log");
             logPath = PrepareLogFile(logPath);
 
             var psi = new ProcessStartInfo
@@ -2934,13 +2943,13 @@ namespace PortableStreamer
                 string ext = info.Extension;
                 string stamp = info.LastWriteTime.ToString("yyyy-MM-dd_HH-mm-ss");
 
-                // Идентификатор машины и вид сборки в имени: логи с разных
-                // компьютеров и от RTMP/SRT не перезапишут друг друга при сборе.
-                string kind = SrtBuild ? "srt_" : "";
-                string target = Path.Combine(dir, $"{name}_{kind}{MachineId}_{stamp}{ext}");
+                // Идентификатор машины в имени архива. Вид сборки уже есть
+                // в самом имени файла (stream_log_srt.txt), поэтому сюда его
+                // добавлять не нужно — иначе метка врала бы.
+                string target = Path.Combine(dir, $"{name}_{MachineId}_{stamp}{ext}");
                 int n = 1;
                 while (File.Exists(target))
-                    target = Path.Combine(dir, $"{name}_{kind}{MachineId}_{stamp}_{n++}{ext}");
+                    target = Path.Combine(dir, $"{name}_{MachineId}_{stamp}_{n++}{ext}");
 
                 File.Move(path, target);
 
