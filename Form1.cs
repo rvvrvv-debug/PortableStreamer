@@ -66,6 +66,14 @@ namespace PortableStreamer
         private GroupBox gbBroadcast = null!;
         private TextBox txtRtmpUrl = null!;
         private TextBox txtStreamKey = null!;
+
+        // Поля SRT-сборки (в обычной не создаются).
+        private TextBox txtSrtHost = null!;
+        private TextBox txtSrtPort = null!;
+        private TextBox txtSrtLatency = null!;
+        private TextBox txtPassphrase = null!;
+        private ComboBox cmbKeyLength = null!;
+
         private DateTimePicker dtpStartTime = null!;
         private ComboBox cmbMode = null!;
         private Label lblStartTime = null!;
@@ -422,7 +430,7 @@ namespace PortableStreamer
             Text = SrtBuild
                 ? "GstScheduler — Playout Server v.2.02 (SRT)"
                 : "GstScheduler — Playout Server v.2.02";
-            ClientSize = new Size(950, 550);
+            ClientSize = new Size(950, 590);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
@@ -603,37 +611,90 @@ namespace PortableStreamer
             gbSources.Controls.Add(btnBrowseOutro);
 
             // ===== Настройки трансляции =====
-            gbBroadcast = MkGroup("Настройки трансляции и времени старта", 15, 275, 720, 95);
+            gbBroadcast = MkGroup("Настройки трансляции и времени старта", 15, 275, 720, 135);
             Controls.Add(gbBroadcast);
 
-            // RTMP URL и Stream Key — одинаковой ширины. Полный текст поля
-            // показывается во всплывающей подсказке: ключи бывают длинными
-            // и нужны для визуального контроля вставки.
-            // В SRT-сборке те же поля означают адрес SRT и Stream ID.
-            string urlCaption = SrtBuild ? "SRT адрес:" : "RTMP URL:";
-            string keyCaption = SrtBuild ? "Stream ID:" : "Stream Key:";
+            // Строка 1 — параметры доставки. У RTMP это адрес и ключ потока,
+            // у SRT — хост, порт и Stream ID (как в vMix и в кабинетах CDN).
+            if (SrtBuild)
+            {
+                gbBroadcast.Controls.Add(MkLabel("Host:", 10, 22, 40));
+                txtSrtHost = MkText("", 52, 20, 150);
+                _tip.SetToolTip(txtSrtHost, "IP-адрес или имя приёмника SRT");
+                gbBroadcast.Controls.Add(txtSrtHost);
 
-            gbBroadcast.Controls.Add(MkLabel(urlCaption, 10, 22, 70));
-            txtRtmpUrl = MkText(SrtBuild ? "srt://" : "rtmp://", 82, 20, 265);
-            txtRtmpUrl.TextChanged += (_, _) => _tip.SetToolTip(txtRtmpUrl, txtRtmpUrl.Text);
-            _tip.SetToolTip(txtRtmpUrl, SrtBuild
-                ? "Адрес приёмника SRT: srt://хост:порт"
-                : "Адрес RTMP-сервера CDN");
-            gbBroadcast.Controls.Add(txtRtmpUrl);
+                gbBroadcast.Controls.Add(MkLabel("Port:", 210, 22, 35));
+                txtSrtPort = MkText("9009", 247, 20, 60);
+                _tip.SetToolTip(txtSrtPort, "Порт приёмника SRT (обычно 9000–9010)");
+                gbBroadcast.Controls.Add(txtSrtPort);
 
-            gbBroadcast.Controls.Add(MkLabel(keyCaption, 357, 22, 80));
-            txtStreamKey = MkText("", 439, 20, 265);
-            txtStreamKey.TextChanged += (_, _) => _tip.SetToolTip(txtStreamKey, txtStreamKey.Text);
-            _tip.SetToolTip(txtStreamKey, SrtBuild
-                ? "Stream ID приёмника (если он его требует). Можно оставить пустым"
-                : "Ключ потока из личного кабинета провайдера");
-            gbBroadcast.Controls.Add(txtStreamKey);
+                gbBroadcast.Controls.Add(MkLabel("Stream ID:", 315, 22, 68));
+                txtStreamKey = MkText("", 385, 20, 175);
+                _tip.SetToolTip(txtStreamKey, "Stream ID приёмника. Если он его не требует — оставьте пустым");
+                gbBroadcast.Controls.Add(txtStreamKey);
 
-            // Режим работы: обычный эфир по расписанию или тестовый цикл.
-            gbBroadcast.Controls.Add(MkLabel("Режим:", 10, 50, 52));
+                // Строка 2 — параметры SRT-соединения.
+                gbBroadcast.Controls.Add(MkLabel("Latency:", 10, 50, 58));
+                txtSrtLatency = MkText("200", 70, 48, 55);
+                _tip.SetToolTip(txtSrtLatency, "Задержка SRT в миллисекундах. Должна совпадать с приёмником (обычно 120–500)");
+                gbBroadcast.Controls.Add(txtSrtLatency);
+                gbBroadcast.Controls.Add(MkLabel("мс", 128, 50, 24));
+
+                gbBroadcast.Controls.Add(MkLabel("Ключ:", 158, 50, 42));
+                cmbKeyLength = new ComboBox
+                {
+                    Location = new Point(202, 48),
+                    Size = new Size(60, 22),
+                    DropDownStyle = ComboBoxStyle.DropDownList
+                };
+                cmbKeyLength.Items.Add("16");
+                cmbKeyLength.Items.Add("24");
+                cmbKeyLength.Items.Add("32");
+                cmbKeyLength.SelectedIndex = 2;
+                _tip.SetToolTip(cmbKeyLength, "Длина ключа шифрования. Учитывается только вместе с Passphrase");
+                gbBroadcast.Controls.Add(cmbKeyLength);
+
+                gbBroadcast.Controls.Add(MkLabel("Passphrase:", 274, 50, 84));
+                txtPassphrase = new TextBox
+                {
+                    Location = new Point(360, 48),
+                    Size = new Size(200, 22),
+                    UseSystemPasswordChar = true
+                };
+                _tip.SetToolTip(txtPassphrase, "Пароль шифрования SRT (10–79 символов). Нужен не всем приёмникам");
+                gbBroadcast.Controls.Add(txtPassphrase);
+            }
+            else
+            {
+                gbBroadcast.Controls.Add(MkLabel("RTMP URL:", 10, 22, 70));
+                txtRtmpUrl = MkText("rtmp://", 82, 20, 265);
+                txtRtmpUrl.TextChanged += (_, _) => _tip.SetToolTip(txtRtmpUrl, txtRtmpUrl.Text);
+                _tip.SetToolTip(txtRtmpUrl, "Адрес RTMP-сервера CDN");
+                gbBroadcast.Controls.Add(txtRtmpUrl);
+
+                gbBroadcast.Controls.Add(MkLabel("Stream Key:", 357, 22, 80));
+                txtStreamKey = MkText("", 439, 20, 265);
+                txtStreamKey.TextChanged += (_, _) => _tip.SetToolTip(txtStreamKey, txtStreamKey.Text);
+                _tip.SetToolTip(txtStreamKey, "Ключ потока из личного кабинета провайдера");
+                gbBroadcast.Controls.Add(txtStreamKey);
+
+                // Вторая строка нужна, чтобы окна обеих версий совпадали по высоте.
+                // Занимаем её подсказкой, а не пустотой.
+                var rtmpHint = new Label
+                {
+                    Text = "Адрес и ключ потока — из личного кабинета провайдера CDN",
+                    Location = new Point(10, 50),
+                    Size = new Size(500, 20),
+                    ForeColor = Color.DimGray
+                };
+                gbBroadcast.Controls.Add(rtmpHint);
+            }
+
+            // Строка 3 — режим работы и время.
+            gbBroadcast.Controls.Add(MkLabel("Режим:", 10, 78, 52));
             cmbMode = new ComboBox
             {
-                Location = new Point(64, 48),
+                Location = new Point(64, 76),
                 Size = new Size(150, 22),
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
@@ -643,26 +704,26 @@ namespace PortableStreamer
             cmbMode.SelectedIndexChanged += (_, _) => ApplyMode();
             gbBroadcast.Controls.Add(cmbMode);
 
-            lblStartTime = MkLabel("Время старта:", 226, 50, 88);
+            lblStartTime = MkLabel("Время старта:", 226, 78, 88);
             gbBroadcast.Controls.Add(lblStartTime);
 
             dtpStartTime = new DateTimePicker
             {
                 Format = DateTimePickerFormat.Custom,
                 CustomFormat = "dd.MM.yyyy HH:mm:ss",
-                Location = new Point(318, 48),
+                Location = new Point(318, 76),
                 Size = new Size(200, 22),
                 Value = DateTime.Now.AddMinutes(2)
             };
             gbBroadcast.Controls.Add(dtpStartTime);
 
-            lblDuration = MkLabel("Длительность:", 226, 50, 88);
+            lblDuration = MkLabel("Длительность:", 226, 78, 88);
             lblDuration.Visible = false;
             gbBroadcast.Controls.Add(lblDuration);
 
             numDuration = new NumericUpDown
             {
-                Location = new Point(318, 48),
+                Location = new Point(318, 76),
                 Size = new Size(70, 22),
                 Minimum = 0,
                 Maximum = 1440,
@@ -673,14 +734,14 @@ namespace PortableStreamer
             _tip.SetToolTip(numDuration, "Минуты. 0 = работать до ручной остановки");
             gbBroadcast.Controls.Add(numDuration);
 
-            lblMinutes = MkLabel("мин (0 = до остановки)", 392, 50, 170);
+            lblMinutes = MkLabel("мин (0 = до остановки)", 392, 78, 170);
             lblMinutes.Visible = false;
             gbBroadcast.Controls.Add(lblMinutes);
 
             chkClockOverlay = new CheckBox
             {
                 Text = "Часы на экране",
-                Location = new Point(560, 50),
+                Location = new Point(560, 78),
                 Size = new Size(150, 20),
                 Visible = false
             };
@@ -688,13 +749,13 @@ namespace PortableStreamer
             gbBroadcast.Controls.Add(chkClockOverlay);
 
             // ===== Мониторинг =====
-            progressTimer = new ProgressBar { Location = new Point(15, 385), Size = new Size(620, 25) };
+            progressTimer = new ProgressBar { Location = new Point(15, 425), Size = new Size(620, 25) };
             Controls.Add(progressTimer);
 
             lblCountdown = new Label
             {
                 Text = "00:00",
-                Location = new Point(640, 383),
+                Location = new Point(640, 423),
                 Size = new Size(95, 30),
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = new Font("Consolas", 14F, FontStyle.Bold),
@@ -705,37 +766,37 @@ namespace PortableStreamer
             lblStatus = new Label
             {
                 Text = "Готов",
-                Location = new Point(15, 415),
+                Location = new Point(15, 455),
                 Size = new Size(720, 24),
                 TextAlign = ContentAlignment.MiddleCenter,
                 BorderStyle = BorderStyle.FixedSingle
             };
             Controls.Add(lblStatus);
 
-            btnStart = MkButton("ПУСК", 15, 445, 233, 40, Color.LightGreen);
+            btnStart = MkButton("ПУСК", 15, 485, 233, 40, Color.LightGreen);
             btnStart.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
             btnStart.Click += btnStart_Click;
             Controls.Add(btnStart);
 
-            btnEmergencyStop = MkButton("АВАРИЙНЫЙ СТОП", 253, 445, 233, 40, Color.Crimson);
+            btnEmergencyStop = MkButton("АВАРИЙНЫЙ СТОП", 253, 485, 233, 40, Color.Crimson);
             btnEmergencyStop.ForeColor = Color.White;
             btnEmergencyStop.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
             btnEmergencyStop.Click += btnEmergencyStop_Click;
             Controls.Add(btnEmergencyStop);
 
-            btnExitProgram = MkButton("ВЫХОД ИЗ ПРОГРАММЫ", 491, 445, 244, 40, Color.Gainsboro);
+            btnExitProgram = MkButton("ВЫХОД ИЗ ПРОГРАММЫ", 491, 485, 244, 40, Color.Gainsboro);
             btnExitProgram.Click += btnExitProgram_Click;
             Controls.Add(btnExitProgram);
 
             // Кнопка для поиска логов: на чужой машине %TEMP% искать утомительно.
-            btnOpenLogs = MkButton("Открыть логи", 15, 495, 160, 28, Color.Gainsboro);
+            btnOpenLogs = MkButton("Открыть логи", 15, 535, 160, 28, Color.Gainsboro);
             btnOpenLogs.Click += (_, _) => OpenLogsFolder();
             Controls.Add(btnOpenLogs);
 
             lblLogsPath = new Label
             {
                 Text = "",
-                Location = new Point(185, 495),
+                Location = new Point(185, 535),
                 Size = new Size(550, 28),
                 TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.DimGray,
@@ -814,7 +875,7 @@ namespace PortableStreamer
             gbProfile.Controls.Add(btnNewProfile);
 
             // ===== О программе =====
-            gbAbout = MkGroup("О программе", 750, 328, 185, 195);
+            gbAbout = MkGroup("О программе", 750, 328, 185, 235);
             Controls.Add(gbAbout);
 
             int by = 22;
@@ -1035,17 +1096,31 @@ namespace PortableStreamer
 
         private Dictionary<string, string> GetCurrentProfileValues()
         {
-            return new Dictionary<string, string>
+            var values = new Dictionary<string, string>
             {
                 { "Resolution", txtResolution.Text },
                 { "Fps", txtFps.Text },
                 { "VideoKbps", txtBitrate.Text },
                 { "AudioKbps", txtAudioBitrate.Text },
                 { "SampleRate", txtSampleRate.Text },
-                { "RtmpUrl", txtRtmpUrl.Text },
                 { "StreamKey", txtStreamKey.Text },
                 { "LoopAudio", _loopAudioPath }
             };
+
+            if (SrtBuild)
+            {
+                values["SrtHost"] = txtSrtHost.Text;
+                values["SrtPort"] = txtSrtPort.Text;
+                values["SrtLatency"] = txtSrtLatency.Text;
+                values["SrtKeyLength"] = cmbKeyLength.SelectedItem?.ToString() ?? "32";
+                values["SrtPassphrase"] = txtPassphrase.Text;
+            }
+            else
+            {
+                values["RtmpUrl"] = txtRtmpUrl.Text;
+            }
+
+            return values;
         }
 
         private void ApplyProfile(string name)
@@ -1058,17 +1133,30 @@ namespace PortableStreamer
             txtBitrate.Text = profile.GetValueOrDefault("VideoKbps", "4200");
             txtAudioBitrate.Text = profile.GetValueOrDefault("AudioKbps", "192");
             txtSampleRate.Text = profile.GetValueOrDefault("SampleRate", "48000");
-            // В SRT-сборке адрес должен быть srt://, и наоборот: профиль общий,
-            // и без этой проверки SRT-версия показывала бы rtmp:// из настроек
-            // обычной версии (и наоборот).
-            string savedUrl = profile.GetValueOrDefault("RtmpUrl", SrtBuild ? "srt://" : "rtmp://");
+            // Профиль общий для обеих версий, поэтому поля читаем раздельно:
+            // SRT-версия берёт Host/Port/... из своих ключей, а если их ещё нет —
+            // подставляет разумные значения и НИКОГДА не показывает rtmp://.
+            if (SrtBuild)
+            {
+                txtSrtHost.Text = profile.GetValueOrDefault("SrtHost", "");
+                txtSrtPort.Text = profile.GetValueOrDefault("SrtPort", "9009");
+                txtSrtLatency.Text = profile.GetValueOrDefault("SrtLatency", "200");
 
-            if (SrtBuild && !savedUrl.StartsWith("srt://", StringComparison.OrdinalIgnoreCase))
-                savedUrl = "srt://";
-            else if (!SrtBuild && savedUrl.StartsWith("srt://", StringComparison.OrdinalIgnoreCase))
-                savedUrl = "rtmp://";
+                string keyLen = profile.GetValueOrDefault("SrtKeyLength", "32");
+                int idx = cmbKeyLength.Items.IndexOf(keyLen);
+                cmbKeyLength.SelectedIndex = idx >= 0 ? idx : 2;
 
-            txtRtmpUrl.Text = savedUrl;
+                txtPassphrase.Text = profile.GetValueOrDefault("SrtPassphrase", "");
+            }
+            else
+            {
+                string savedUrl = profile.GetValueOrDefault("RtmpUrl", "rtmp://");
+                if (savedUrl.StartsWith("srt://", StringComparison.OrdinalIgnoreCase))
+                    savedUrl = "rtmp://";
+
+                txtRtmpUrl.Text = savedUrl;
+            }
+
             txtStreamKey.Text = profile.GetValueOrDefault("StreamKey", "");
             _loopAudioPath = profile.GetValueOrDefault("LoopAudio", "");
             UpdateLoopSourceCaption();
@@ -1648,20 +1736,22 @@ namespace PortableStreamer
             string configPath = Path.Combine(toolsDir, "mediamtx.yml");
             string batPath = Path.Combine(toolsDir, "push.bat");
 
-            string rtmpUrl = txtRtmpUrl.Text.Trim();
             string streamKey = txtStreamKey.Text.Trim();
 
-            // RTMP: нужны и адрес, и ключ. SRT: достаточно адреса — Stream ID
-            // многие приёмники (например, vMix) не требуют.
+            // В SRT-сборке адрес собирается из отдельных полей (хост, порт).
+            string rtmpUrl = SrtBuild ? "" : txtRtmpUrl.Text.Trim();
+
+            // RTMP: нужны и адрес, и ключ. SRT: нужен хост — Stream ID и passphrase
+            // многие приёмники не требуют.
             bool hasCdn = SrtBuild
-                ? !string.IsNullOrEmpty(rtmpUrl)
-                  && !rtmpUrl.Equals("srt://", StringComparison.OrdinalIgnoreCase)
+                ? txtSrtHost.Text.Trim().Length > 0
                 : !string.IsNullOrEmpty(rtmpUrl)
                   && rtmpUrl != "rtmp://"
                   && !string.IsNullOrEmpty(streamKey);
 
             _hasCdn = hasCdn;
             _maskKey = hasCdn ? streamKey : "";
+            _maskPassphrase = (hasCdn && SrtBuild) ? txtPassphrase.Text : "";
 
             var sb = new StringBuilder();
             sb.AppendLine("logLevel: info");
@@ -1717,20 +1807,34 @@ namespace PortableStreamer
                 // обычный хвост URL, MediaMTX теряет часть "?auth=..." (считает её
                 // query-параметром), CDN отвечает 403 publish denied.
                 //
-                // SRT: ключ потока — это параметр streamid в адресе приёмника.
+                // SRT: адрес собирается из полей Host / Port / Stream ID /
+                // Latency / Passphrase. Режим всегда caller — мы подключаемся
+                // к приёмнику (vMix-Listener, CDN-ingest).
                 string destUrl;
 
                 if (SrtBuild)
                 {
-                    string baseUrl = rtmpUrl.Trim().TrimEnd('/');
+                    string host = txtSrtHost.Text.Trim();
+                    string port = txtSrtPort.Text.Trim();
                     string streamId = streamKey.Trim();
+                    string latency = txtSrtLatency.Text.Trim();
+                    string passphrase = txtPassphrase.Text;
 
-                    destUrl = baseUrl;
+                    var query = new List<string> { "mode=caller" };
+
                     if (streamId.Length > 0)
+                        query.Add("streamid=" + Uri.EscapeDataString(streamId));
+
+                    if (int.TryParse(latency, out int latMs) && latMs >= 20 && latMs <= 8000)
+                        query.Add("latency=" + latMs);
+
+                    if (passphrase.Length > 0)
                     {
-                        string separator = baseUrl.Contains('?') ? "&" : "?";
-                        destUrl += $"{separator}streamid={Uri.EscapeDataString(streamId)}";
+                        query.Add("passphrase=" + Uri.EscapeDataString(passphrase));
+                        query.Add("pbkeylen=" + (cmbKeyLength.SelectedItem?.ToString() ?? "32"));
                     }
+
+                    destUrl = $"srt://{host}:{port}?{string.Join("&", query)}";
                 }
                 else
                 {
@@ -2799,6 +2903,7 @@ namespace PortableStreamer
         private int _cdnErrorEpoch = -1;
         private bool _hasCdn;
         private string _maskKey = "";
+        private string _maskPassphrase = "";
 
         /// <summary>
         /// Разбирает строки MediaMTX, относящиеся к отправке на CDN,
@@ -3050,10 +3155,13 @@ namespace PortableStreamer
         {
             try
             {
-                // Ключ потока не должен попадать в логи: их пересылают при разборе
-                // проблем, а ключ — это доступ к эфиру.
+                // Ключ потока и пароль SRT не должны попадать в логи: их пересылают
+                // при разборе проблем, а это доступ к эфиру.
                 if (!string.IsNullOrEmpty(_maskKey) && line.Contains(_maskKey, StringComparison.Ordinal))
                     line = line.Replace(_maskKey, "***", StringComparison.Ordinal);
+
+                if (!string.IsNullOrEmpty(_maskPassphrase) && line.Contains(_maskPassphrase, StringComparison.Ordinal))
+                    line = line.Replace(_maskPassphrase, "***", StringComparison.Ordinal);
 
                 lock (this) { File.AppendAllText(path, line + Environment.NewLine); }
             }
@@ -3353,64 +3461,58 @@ namespace PortableStreamer
         /// Проверка адреса для SRT-сборки: схема, хост, обязательный порт,
         /// необязательный Stream ID без служебных символов.
         /// </summary>
+        /// <summary>
+        /// Проверка параметров SRT-сборки: хост, порт, streamid, latency и passphrase.
+        /// </summary>
         private bool TryValidateSrtBroadcast(out bool cdnConfigured, out string error)
         {
             cdnConfigured = false;
             error = "";
 
-            string url = txtRtmpUrl.Text.Trim();
+            string host = txtSrtHost.Text.Trim();
+            string portText = txtSrtPort.Text.Trim();
             string streamId = txtStreamKey.Text.Trim();
+            string latencyText = txtSrtLatency.Text.Trim();
+            string passphrase = txtPassphrase.Text;
 
-            bool urlEmpty = string.IsNullOrEmpty(url) || url.Equals("srt://", StringComparison.OrdinalIgnoreCase);
+            if (host.Length == 0)
+                return true;   // приёмник не задан — локальный режим, спросим отдельно
 
-            if (urlEmpty && streamId.Length == 0)
-                return true;   // локальный режим
-
-            if (urlEmpty)
+            if (host.IndexOf(' ') >= 0 || host.Contains("://", StringComparison.Ordinal))
             {
-                error = "Указан Stream ID, но не указан адрес SRT.\n\n" +
-                        "Пример: srt://192.168.1.50:9000";
+                error = "В поле Host должен быть только адрес приёмника — без srt:// и пробелов.\n\n" +
+                        "Пример: 192.168.1.50";
                 return false;
             }
 
-            if (!url.StartsWith("srt://", StringComparison.OrdinalIgnoreCase))
+            if (!int.TryParse(portText, out int port) || port < 1 || port > 65535)
             {
-                error = "Адрес SRT должен начинаться с srt://\n\n" +
-                        $"Сейчас указано: {url}";
+                error = "Порт должен быть числом от 1 до 65535.\n\n" +
+                        "Например: 9009";
                 return false;
             }
 
-            if (url.IndexOf(' ') >= 0)
+            if (latencyText.Length > 0)
             {
-                error = "В адресе SRT есть пробелы — уберите их.";
-                return false;
-            }
-
-            string afterScheme = url.Substring("srt://".Length);
-            string hostPort = afterScheme.Split('/')[0].Split('?')[0];
-
-            if (hostPort.Length == 0)
-            {
-                error = "В адресе SRT не указан сервер.\n\n" +
-                        "Пример: srt://192.168.1.50:9000";
-                return false;
-            }
-
-            int colon = hostPort.LastIndexOf(':');
-            if (colon < 0
-                || colon == hostPort.Length - 1
-                || !int.TryParse(hostPort.Substring(colon + 1), out int port)
-                || port < 1 || port > 65535)
-            {
-                error = "В адресе SRT должен быть порт приёмника.\n\n" +
-                        "Пример: srt://192.168.1.50:9000";
-                return false;
+                if (!int.TryParse(latencyText, out int latency) || latency < 20 || latency > 8000)
+                {
+                    error = "Latency задаётся в миллисекундах, от 20 до 8000.\n\n" +
+                            "Обычно 120–500. Должна совпадать с приёмником.";
+                    return false;
+                }
             }
 
             if (streamId.IndexOfAny(new[] { ' ', '\t', '\r', '\n', '"', '&', '?' }) >= 0)
             {
                 error = "В Stream ID есть недопустимые символы: пробелы, кавычки, «&» или «?».\n\n" +
                         "Stream ID должен быть одной строкой без служебных символов.";
+                return false;
+            }
+
+            if (passphrase.Length > 0 && (passphrase.Length < 10 || passphrase.Length > 79))
+            {
+                error = "Passphrase должен быть от 10 до 79 символов — это требование SRT.\n\n" +
+                        $"Сейчас введено {passphrase.Length}.";
                 return false;
             }
 
