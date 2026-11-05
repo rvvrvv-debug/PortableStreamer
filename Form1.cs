@@ -167,13 +167,16 @@ namespace PortableStreamer
         }
 
         /// <summary>
-        /// Путь к активному файлу лога. Вид сборки входит в ИМЯ ФАЙЛА, а не в имя
-        /// архива: иначе при сборе логов с нескольких машин архивы получали метку
-        /// того прогона, который их архивировал, и содержимое путалось с названием
-        /// (в «srt»-файле мог лежать лог обычной версии).
+        /// Путь к активному файлу лога. В имени ВСЕГДА есть идентификатор машины,
+        /// поэтому активные файлы с разных компьютеров не перезаписывают друг друга
+        /// при сборе логов в одну папку. Вид сборки тоже входит в имя: SRT-версия
+        /// пишет stream_log_srt_&lt;ID&gt;.txt, обычная — stream_log_&lt;ID&gt;.txt.
         /// </summary>
         private string LogPath(string baseName)
-            => Path.Combine(PrepCacheDir, SrtBuild ? $"{baseName}_srt.txt" : $"{baseName}.txt");
+        {
+            string kind = SrtBuild ? "_srt" : "";
+            return Path.Combine(PrepCacheDir, $"{baseName}{kind}_{MachineId}.txt");
+        }
 
         /// <summary>
         /// Поток опубликован в MediaMTX (появилась строка "is publishing to path").
@@ -2127,8 +2130,7 @@ namespace PortableStreamer
 
         private void StartGstProcess(string args, string workingDir)
         {
-            string logPath = Path.Combine(workingDir, "stream_log.txt");
-            logPath = PrepareLogFile(logPath);
+            string logPath = PrepareLogFile(LogPath("stream_log"));
             lock (_decodersSeen) { _decodersSeen.Clear(); }
 
             // Шапка лога: без неё невозможно понять, какой файл и с какими
@@ -2988,13 +2990,12 @@ namespace PortableStreamer
                 string ext = info.Extension;
                 string stamp = info.LastWriteTime.ToString("yyyy-MM-dd_HH-mm-ss");
 
-                // Идентификатор машины в имени архива. Вид сборки уже есть
-                // в самом имени файла (stream_log_srt.txt), поэтому сюда его
-                // добавлять не нужно — иначе метка врала бы.
-                string target = Path.Combine(dir, $"{name}_{MachineId}_{stamp}{ext}");
+                // Идентификатор машины и вид сборки уже есть в самом имени файла
+                // (stream_log_srt_<ID>.txt), поэтому в архив добавляем только время.
+                string target = Path.Combine(dir, $"{name}_{stamp}{ext}");
                 int n = 1;
                 while (File.Exists(target))
-                    target = Path.Combine(dir, $"{name}_{MachineId}_{stamp}_{n++}{ext}");
+                    target = Path.Combine(dir, $"{name}_{stamp}_{n++}{ext}");
 
                 File.Move(path, target);
 
@@ -3022,7 +3023,7 @@ namespace PortableStreamer
                 string dir = PrepCacheDir;
                 Directory.CreateDirectory(dir);
 
-                string log = Path.Combine(dir, "stream_log.txt");
+                string log = LogPath("stream_log");
                 if (File.Exists(log))
                 {
                     Process.Start(new ProcessStartInfo
